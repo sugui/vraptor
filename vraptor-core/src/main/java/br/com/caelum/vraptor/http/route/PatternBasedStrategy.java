@@ -17,6 +17,8 @@
 
 package br.com.caelum.vraptor.http.route;
 
+import static com.google.common.base.Objects.equal;
+
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.EnumSet;
@@ -102,7 +104,7 @@ public class PatternBasedStrategy implements Route {
 		return Modifier.isPublic(m.getModifiers()) && !Modifier.isStatic(m.getModifiers());
 	}
 
-	public String urlFor(Class<?> type, Method m, Object params) {
+	public String urlFor(Class<?> type, Method m, Object... params) {
 		return control.apply(new String[] { this.type.extract("webLogic", type.getName()),
 				this.method.extract("webMethod", m.getName()) });
 	}
@@ -143,27 +145,6 @@ public class PatternBasedStrategy implements Route {
 			return false;
 		}
 		PatternBasedStrategy other = (PatternBasedStrategy) obj;
-		if (method == null) {
-			if (other.method != null) {
-				return false;
-			}
-		} else if (!method.equals(other.method)) {
-			return false;
-		}
-		if (methods == null) {
-			if (other.methods != null) {
-				return false;
-			}
-		} else if (!methods.equals(other.methods)) {
-			return false;
-		}
-		if (type == null) {
-			if (other.type != null) {
-				return false;
-			}
-		} else if (!type.equals(other.type)) {
-			return false;
-		}
-		return true;
+		return equal(method, other.method) && equal(methods, other.methods) && equal(type, other.type);
 	}
 }

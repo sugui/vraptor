@@ -17,6 +17,8 @@
 
 package br.com.caelum.vraptor.http.route;
 
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -77,10 +79,14 @@ public class DefaultParametersControl implements ParametersControl {
 		return Pattern.compile(patternUri);
 	}
 
-	public String fillUri(Object params) {
+	public String fillUri(String[] paramNames, Object... paramValues) {
+		if (paramNames.length != paramValues.length) {
+			throw new IllegalArgumentException("paramNames must have the same length as paramValues");
+		}
 		String base = originalPattern.replaceAll("\\.\\*", "");
 		for (String key : parameters) {
-			Object result = new Evaluator().get(params, key);
+			Object param = selectParam(key, paramNames, paramValues);
+			Object result = new Evaluator().get(param, key);
 			if (result != null) {
 				Class type = result.getClass();
 				if (converters.existsTwoWayFor(type)) {
@@ -88,9 +94,19 @@ public class DefaultParametersControl implements ParametersControl {
 					result = converter.convert(result);
 				}
 			}
-			base = base.replaceAll("\\{" + key + "\\*?\\}", result == null ? "" : result.toString());
+			String regex = "\\{" + key + "\\*?\\}|\\{" + key + "\\*?:(.*)\\}";
+			base = base.replaceAll(regex, result == null ? "" : result.toString());
 		}
 		return base;
+	}
+
+	private Object selectParam(String key, String[] paramNames, Object[] paramValues) {
+		for (int i = 0; i < paramNames.length; i++) {
+			if (key.matches("^" + paramNames[i] + "(\\..*|$)")) {
+				return paramValues[i];
+			}
+		}
+		return null;
 	}
 
 	public boolean matches(String uri) {
@@ -102,7 +118,11 @@ public class DefaultParametersControl implements ParametersControl {
 		m.matches();
 		for (int i = 1; i <= m.groupCount(); i++) {
 			String name = parameters.get(i - 1);
-			request.setParameter(name, m.group(i));
+			try {
+				request.setParameter(name, URLDecoder.decode(m.group(i), "UTF-8"));
+			} catch (UnsupportedEncodingException e) {
+				logger.error("Error when decoding url parameters");
+			}
 		}
 	}
 

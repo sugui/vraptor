@@ -37,10 +37,6 @@ import org.mockito.MockitoAnnotations;
 import br.com.caelum.vraptor.TwoWayConverter;
 import br.com.caelum.vraptor.core.Converters;
 import br.com.caelum.vraptor.http.MutableRequest;
-import br.com.caelum.vraptor.http.ParanamerNameProvider;
-import br.com.caelum.vraptor.http.asm.AsmBasedTypeCreator;
-import br.com.caelum.vraptor.resource.DefaultResourceMethod;
-import br.com.caelum.vraptor.resource.ResourceMethod;
 
 import com.google.common.collect.ImmutableMap;
 
@@ -77,6 +73,7 @@ public class DefaultParametersControlTest {
 
 		verify(request).setParameter("hexa", new String[] {"FAF323"});
 	}
+
 	@Test
 	@Ignore("This shit should work someday")
 	public void registerParametersWithMultipleRegexes() throws SecurityException, NoSuchMethodException {
@@ -119,33 +116,27 @@ public class DefaultParametersControlTest {
 		}
 	}
 
-	class TypeCreated {
-		private final Client client;
-
-		public TypeCreated(Client c) {
-			this.client = c;
-		}
-
-		public Client getClient() {
-			return client;
-		}
-	}
-
 	@Test
 	public void shouldTranslateAsteriskAsEmpty() {
-		String uri = new DefaultParametersControl("/clients/.*", converters).fillUri(client(3L));
+		String uri = new DefaultParametersControl("/clients/.*", converters).fillUri(new String[] {"client"}, client(3L));
 		assertThat(uri, is(equalTo("/clients/")));
 	}
 
-	@Test
-	public void shouldTranslatePatternArgs() {
-		String uri = new DefaultParametersControl("/clients/{client.id}", converters).fillUri(client(3L));
-		assertThat(uri, is(equalTo("/clients/3")));
-	}
+    @Test
+    public void shouldTranslatePatternArgs() {
+        String uri = new DefaultParametersControl("/clients/{client.id}", converters).fillUri(new String[] {"client"}, client(3L));
+        assertThat(uri, is(equalTo("/clients/3")));
+    }
+
+    @Test
+    public void shouldTranslatePatternArgsWithRegex() {
+        String uri = new DefaultParametersControl("/clients/{id:[0-9]{1,}}", converters).fillUri(new String[] {"id"}, 30L);
+        assertThat(uri, is(equalTo("/clients/30")));
+    }
 
 	@Test
 	public void shouldTranslatePatternArgNullAsEmpty() {
-		String uri = new DefaultParametersControl("/clients/{client.id}", converters).fillUri(client(null));
+		String uri = new DefaultParametersControl("/clients/{client.id}", converters).fillUri(new String[] {"client"}, client(null));
 		assertThat(uri, is(equalTo("/clients/")));
 	}
 
@@ -155,14 +146,14 @@ public class DefaultParametersControlTest {
 		when(converters.twoWayConverterFor(Client.class)).thenReturn(converter);
 		when(converter.convert(any(Client.class))).thenReturn("john");
 
-		String uri = new DefaultParametersControl("/clients/{client}", converters).fillUri(client(null));
+		String uri = new DefaultParametersControl("/clients/{client}", converters).fillUri(new String[] {"client"}, client(null));
 		assertThat(uri, is(equalTo("/clients/john")));
 
 	}
 
 	@Test
 	public void shouldTranslatePatternArgInternalNullAsEmpty() {
-		String uri = new DefaultParametersControl("/clients/{client.child.id}", converters) .fillUri(client(null));
+		String uri = new DefaultParametersControl("/clients/{client.child.id}", converters) .fillUri(new String[] {"client"}, client(null));
 		assertThat(uri, is(equalTo("/clients/")));
 	}
 
@@ -183,8 +174,8 @@ public class DefaultParametersControlTest {
 
 		assertThat(control.matches("/clients/3/subtask/5/"), is(true));
 	}
-	private TypeCreated client(Long id) {
-		return new TypeCreated(new Client(id));
+	private Client client(Long id) {
+		return new Client(id);
 	}
 
 	@Test
@@ -236,17 +227,17 @@ public class DefaultParametersControlTest {
 	@Test
 	public void fillURLWithGreedyParameters() throws SecurityException, NoSuchMethodException {
 		DefaultParametersControl control = new DefaultParametersControl("/clients/{pathToFile*}", converters);
-		ResourceMethod method = DefaultResourceMethod.instanceFor(PathToFile.class, PathToFile.class.getDeclaredMethods()[0]);
-		Object object = new AsmBasedTypeCreator(new ParanamerNameProvider()).instanceWithParameters(method, "my/path/to/file");
-		String filled = control.fillUri(object);
+
+		String filled = control.fillUri(new String[] {"pathToFile"}, "my/path/to/file");
+
 		assertThat(filled, is("/clients/my/path/to/file"));
 	}
 	@Test
 	public void fillURLWithoutGreedyParameters() throws SecurityException, NoSuchMethodException {
 		DefaultParametersControl control = new DefaultParametersControl("/clients/{pathToFile}", converters);
-		ResourceMethod method = DefaultResourceMethod.instanceFor(PathToFile.class, PathToFile.class.getDeclaredMethods()[0]);
-		Object object = new AsmBasedTypeCreator(new ParanamerNameProvider()).instanceWithParameters(method, "my/path/to/file");
-		String filled = control.fillUri(object);
+
+		String filled = control.fillUri(new String[] {"pathToFile"}, "my/path/to/file");
+
 		assertThat(filled, is("/clients/my/path/to/file"));
 	}
 
@@ -278,4 +269,18 @@ public class DefaultParametersControlTest {
 
 		assertThat(control.apply(new String[] {"15"}),is(uri));
 	}
+
+	@Test
+	public void shouldDecodeUriParameters() throws Exception {
+		DefaultParametersControl control = new DefaultParametersControl("/clients/{name}", converters);
+
+		control.fillIntoRequest("/clients/Joao+Leno", request);
+
+		verify(request).setParameter("name", "Joao Leno");
+
+		control.fillIntoRequest("/clients/Paulo%20Macartinei", request);
+
+		verify(request).setParameter("name", "Paulo Macartinei");
+	}
+
 }

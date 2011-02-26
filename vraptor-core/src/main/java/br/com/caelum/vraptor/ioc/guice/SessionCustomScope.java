@@ -17,10 +17,12 @@ package br.com.caelum.vraptor.ioc.guice;
 
 import javax.servlet.http.HttpSession;
 
-import br.com.caelum.vraptor.ioc.guice.RequestCustomScope.NullObject;
-import br.com.caelum.vraptor.ioc.spring.VRaptorRequestHolder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import com.google.inject.Key;
+import com.google.common.collect.LinkedListMultimap;
+import com.google.common.collect.Multimap;
+import com.google.inject.Inject;
 import com.google.inject.Provider;
 
 /**
@@ -31,52 +33,53 @@ import com.google.inject.Provider;
  * @since 3.2
  *
  */
-public class SessionCustomScope implements LifecycleScope {
+public class SessionCustomScope extends AbstractScope implements LifecycleScope {
 
-	public <T> Provider<T> scope(Key<T> key, final Provider<T> creator) {
-		final String name = key.toString();
-		return new Provider<T>() {
-			public T get() {
-				HttpSession session = VRaptorRequestHolder.currentRequest().getRequest().getSession();
-				synchronized (session) {
-					Object obj = session.getAttribute(name);
-					if (NullObject.INSTANCE == obj) {
-						return null;
-					}
-					@SuppressWarnings("unchecked")
-					T t = (T) obj;
-					if (t == null) {
-						t = creator.get();
-						session.setAttribute(name, (t != null) ? t : NullObject.INSTANCE);
-					}
-					return t;
-				}
+	private static final Logger logger = LoggerFactory.getLogger(SessionCustomScope.class);
+
+	private Multimap<String, LifecycleListener> listeners = LinkedListMultimap.create();
+
+	private Provider<HttpSession> provider;
+
+	@Inject
+	public void setProvider(Provider<HttpSession> provider) {
+		this.provider = provider;
+	}
+
+	@Override
+	ScopeHolder getHolder() {
+		return new ScopeHolder() {
+
+			public void setAttribute(String name, Object value) {
+				provider.get().setAttribute(name, value);
 			}
 
-			@Override
-			public String toString() {
-				return String.format("%s[%s]", creator, this);
+			public Object getAttribute(String name) {
+				return provider.get().getAttribute(name);
 			}
 		};
 	}
 
 	@Override
-	public String toString() {
+	String getScopeName() {
 		return "SESSION";
 	}
 
 	public void registerDestroyListener(LifecycleListener listener) {
-		// TODO Auto-generated method stub
-
+		listeners.put(provider.get().getId(), listener);
 	}
 
-	public void start() {
-		// TODO Auto-generated method stub
-
+	public void start(HttpSession session) {
+		stop(session);
 	}
 
-	public void stop() {
-		// TODO Auto-generated method stub
-
+	public void stop(HttpSession session) {
+		for (LifecycleListener listener : listeners.removeAll(session.getId())) {
+			try {
+				listener.onEvent();
+			} catch (Exception e) {
+				logger.warn("Error while invoking PreDestroy", e);
+			}
+		}
 	}
 }

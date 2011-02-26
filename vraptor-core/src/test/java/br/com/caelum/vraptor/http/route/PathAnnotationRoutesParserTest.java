@@ -47,6 +47,7 @@ import br.com.caelum.vraptor.Head;
 import br.com.caelum.vraptor.Path;
 import br.com.caelum.vraptor.Post;
 import br.com.caelum.vraptor.core.Converters;
+import br.com.caelum.vraptor.http.ParameterNameProvider;
 import br.com.caelum.vraptor.proxy.DefaultProxifier;
 import br.com.caelum.vraptor.proxy.Proxifier;
 import br.com.caelum.vraptor.resource.DefaultResourceClass;
@@ -58,6 +59,7 @@ public class PathAnnotationRoutesParserTest {
 	private @Mock Converters converters;
 	private NoTypeFinder typeFinder;
 	private @Mock Router router;
+	private @Mock ParameterNameProvider nameProvider;
 
 	private PathAnnotationRoutesParser parser;
 
@@ -71,7 +73,7 @@ public class PathAnnotationRoutesParserTest {
         when(router.builderFor(anyString())).thenAnswer(new Answer<DefaultRouteBuilder>() {
 
 			public DefaultRouteBuilder answer(InvocationOnMock invocation) throws Throwable {
-				return new DefaultRouteBuilder(proxifier, typeFinder, converters, (String) invocation.getArguments()[0]);
+				return new DefaultRouteBuilder(proxifier, typeFinder, converters, nameProvider, (String) invocation.getArguments()[0]);
 			}
 		});
 
@@ -93,6 +95,30 @@ public class PathAnnotationRoutesParserTest {
     	public void withEmptyPath() {
     	}
     }
+
+    @Resource
+    @Path("/prefix")
+    public static class GetAnnotatedController {
+    	public void withoutPath() {
+    	}
+    	@Get("/absolutePath")
+    	public void withAbsolutePath() {
+    	}
+    	@Get("relativePath")
+    	public void withRelativePath() {
+    	}
+    	@Get("")
+    	public void withEmptyPath() {
+    	}
+    }
+
+    @Resource
+    public static class WrongGetAnnotatedController {
+    	@Path("/some") @Get("/other")
+    	public void withAmbiguousDeclaration() {
+    	}
+    }
+
     @Resource
     @Path("/endSlash/")
     public static class EndSlashAnnotatedController {
@@ -105,6 +131,22 @@ public class PathAnnotationRoutesParserTest {
     	public void withRelativePath() {
     	}
     	@Path("")
+    	public void withEmptyPath() {
+    	}
+    }
+
+    @Resource
+    @Path("/endSlash/")
+    public static class EndSlashAnnotatedGetController {
+    	public void withoutPath() {
+    	}
+    	@Get("/absolutePath")
+    	public void withAbsolutePath() {
+    	}
+    	@Get("relativePath")
+    	public void withRelativePath() {
+    	}
+    	@Get("")
     	public void withEmptyPath() {
     	}
     }
@@ -442,6 +484,61 @@ public class PathAnnotationRoutesParserTest {
 				description.appendText("a route which can handle ").appendValue(type).appendText(".").appendValue(method);
 			}
 		};
+    }
+
+    @Test
+    public void addsAPrefixToMethodsWhenTheGetControllerAndTheMethodAreAnnotatedWithRelativePath() throws Exception {
+    	List<Route> routes = parser.rulesFor(new DefaultResourceClass(GetAnnotatedController.class));
+    	Route route = getRouteMatching(routes, "/prefix/relativePath");
+
+    	assertThat(route, canHandle(GetAnnotatedController.class, "withRelativePath"));
+    }
+
+    @Test
+    public void priorityForGetAnnotationShouldBeDefault() throws Exception {
+    	List<Route> routes = parser.rulesFor(new DefaultResourceClass(GetAnnotatedController.class));
+    	Route route = getRouteMatching(routes, "/prefix/relativePath");
+
+    	assertThat(route.getPriority(), is(Path.DEFAULT));
+    }
+
+	@Test
+    public void addsAPrefixToMethodsWhenTheGetControllerEndsWithSlashAndTheMethodAreAnnotatedWithRelativePath() throws Exception {
+		List<Route> routes = parser.rulesFor(new DefaultResourceClass(EndSlashAnnotatedGetController.class));
+		Route route = getRouteMatching(routes, "/endSlash/relativePath");
+
+		assertThat(route, canHandle(EndSlashAnnotatedGetController.class, "withRelativePath"));
+    }
+
+
+    @Test
+    public void addsAPrefixToMethodsWhenTheGetControllerEndsWithSlashAndTheMethodAreAnnotatedWithAbsolutePath() throws Exception {
+    	List<Route> routes = parser.rulesFor(new DefaultResourceClass(EndSlashAnnotatedGetController.class));
+    	Route route = getRouteMatching(routes, "/endSlash/absolutePath");
+
+    	assertThat(route, canHandle(EndSlashAnnotatedGetController.class, "withAbsolutePath"));
+    }
+
+
+    @Test
+    public void addsAPrefixToMethodsWhenTheGetControllerAndTheMethodAreAnnotatedWithAbsolutePath() throws Exception {
+    	List<Route> routes = parser.rulesFor(new DefaultResourceClass(GetAnnotatedController.class));
+    	Route route = getRouteMatching(routes, "/prefix/absolutePath");
+
+    	assertThat(route, canHandle(GetAnnotatedController.class, "withAbsolutePath"));
+    }
+
+    @Test
+    public void addsAPrefixToMethodsWhenTheGetControllerIsAnnotatedWithPath() throws Exception {
+    	List<Route> routes = parser.rulesFor(new DefaultResourceClass(GetAnnotatedController.class));
+    	Route route = getRouteMatching(routes, "/prefix/withoutPath");
+
+    	assertThat(route, canHandle(GetAnnotatedController.class, "withoutPath"));
+    }
+
+    @Test(expected=IllegalArgumentException.class)
+    public void throwsExceptionWhenTheGetControllerHasAmbiguousDeclaration() throws Exception {
+    	parser.rulesFor(new DefaultResourceClass(WrongGetAnnotatedController.class));
     }
 
 }
